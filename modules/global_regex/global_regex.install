@@ -1,0 +1,83 @@
+<?php
+
+/**
+ * @file
+ * Install file for Global Regex module.
+ */
+
+/**
+ * Implements hook_schema().
+ */
+function global_regex_schema() {
+  $schema = array();
+  // Base table for global regex.
+  $schema['global_regex'] = array(
+    'description' => 'Table to save global regex',
+    'fields' => array(
+      'id' => array(
+        'type' => 'serial',
+        'unsigned' => TRUE,
+        'not null' => TRUE,
+        'description' => 'The primary identifier',
+      ),
+      'machine_name' => array(
+        'type' => 'varchar',
+        'description' => 'Machine name of the global regex instance',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'name' => array(
+        'type' => 'varchar',
+        'description' => 'Human readable name of the global regex instance',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => '',
+      ),
+      'regex' => array(
+        'type' => 'varchar',
+        'description' => 'Regex for global regex instance',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => '',
+      ),
+      'error_message' => array(
+        'type' => 'varchar',
+        'description' => 'Regex type error message',
+        'not null' => FALSE,
+        'length' => 255,
+      ),
+      'status' => array(
+        'description' => 'Boolean indicating whether the regex is active.',
+        'type' => 'int',
+        'not null' => TRUE,
+        'default' => 1,
+      ),
+    ),
+    'primary key' => array('id'),
+  );
+
+  // Table for field wise global regex.
+  $schema['global_regex_fields'] = array(
+    'description' => 'Table to save global rexex with fields',
+    'fields' => array(
+      'field_name' => array(
+        'type' => 'varchar',
+        'description' => 'Machine name of the field on which global regex is being applied',
+        'length' => 255,
+        'not null' => TRUE,
+        'default' => '',
+      ),
+      'regex_machine_name' => array(
+        'type' => 'varchar',
+        'description' => 'Machine name of the global regex instance',
+        'length' => 255,
+        'not null' => FALSE,
+        'default' => '',
+      ),
+    ),
+    'primary key' => array('field_name'),
+  );
+
+  return $schema;
+}

@@ -1,0 +1,11 @@
+name = Global Regex
+description = Adds Global Regular expressions which can be used for validating fields values.
+core = 7.x
+configure = admin/config/system/global-regex
+
+; Information added by Drupal.org packaging script on 2016-05-02
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "global_regex"
+datestamp = "1462187951"
+

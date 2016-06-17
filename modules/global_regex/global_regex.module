@@ -1,0 +1,183 @@
+<?php
+
+/**
+ * @file
+ * Global Regex module file.
+ */
+
+/**
+ * Implements hook_permission().
+ */
+function global_regex_permission() {
+  return array(
+    'administer global regex' => array(
+      'title' => t('Administer Global Regex'),
+      'description' => t('Permission to add and configure global regex'),
+    ),
+  );
+}
+
+/**
+ * Implements hook_menu().
+ */
+function global_regex_menu() {
+  $items['add/global-regex'] = array(
+    'title' => 'Add Global Regex',
+    'description' => 'Add global regex.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('global_regex_add_form'),
+    'access arguments' => array('administer global regex'),
+    'file' => 'includes/global_regex.admin.inc',
+    'type' => MENU_NORMAL_ITEM,
+  );
+  $items['global-regex/%global_regex_type/edit'] = array(
+    'title' => 'Edit Global Regex',
+    'description' => 'Add global regex.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('global_regex_add_form', 1),
+    'access arguments' => array('administer global regex'),
+    'file' => 'includes/global_regex.admin.inc',
+    'type' => MENU_NORMAL_ITEM,
+  );
+  $items['global-regex/%/delete'] = array(
+    'title' => 'Delete',
+    'description' => 'Delete global regex.',
+    'page callback' => 'drupal_get_form',
+    'page arguments' => array('global_regex_delete_confirm', 1),
+    'access arguments' => array('administer global regex'),
+    'file' => 'includes/global_regex.admin.inc',
+  );
+  $items['admin/config/system/global-regex'] = array(
+    'title' => 'Global Regex',
+    'description' => 'Configure global regex.',
+    'page callback' => 'global_regex_types',
+    'access arguments' => array('administer global regex'),
+    'file' => 'includes/global_regex.admin.inc',
+    'type' => MENU_NORMAL_ITEM,
+  );
+
+  return $items;
+}
+
+/**
+ * Function for loading global regex type from machine name.
+ */
+function global_regex_type_load($machine_name) {
+  $query = db_select('global_regex')
+      ->fields('global_regex')
+      ->condition('machine_name', $machine_name);
+  return $query->execute()->fetchAssoc();
+}
+
+/**
+ * Implements hook_FORM_ID_form_alter().
+ */
+function global_regex_form_field_ui_field_edit_form_alter(&$form, &$form_state, $form_id) {
+  if (!$form['#field']['locked'] && $form['#field']['type'] == 'text') {
+    $field_name = $form['instance']['field_name']['#value'];
+    $form['instance']['global_regex'] = array(
+      '#title' => t('Select Global Regex Type'),
+      '#type' => 'select',
+      '#options' => array(
+        '_none' => t('@start_separator Select @end_separator', array(
+          "@start_separator" => '- ',
+          "@end_separator" => ' -',
+        )
+        ),
+      ) + global_regex_get_list(),
+      '#description' => t('Select global regex to validate value of this field'),
+      '#default_value' => !empty($form['#instance']['global_regex']) ? $form['#instance']['global_regex'] : '_none',
+      // Display just below the 'default_value' widget.
+      '#weight' => $form['instance']['default_value_widget'][$field_name]['#weight'] + 10,
+    );
+    array_unshift($form['#submit'], 'global_regex_field_ui_field_edit_form_submit');
+  }
+}
+
+/**
+ * Additional submit handler for the 'Edit field instance' form.
+ */
+function global_regex_field_ui_field_edit_form_submit($form, &$form_state) {
+  $data = array(
+    'field_name' => $form_state['values']['instance']['field_name'],
+    'regex_machine_name' => $form_state['values']['instance']['global_regex'],
+  );
+  if (empty($form_state['complete form']['#instance']['global_regex']) || $form_state['complete form']['#instance']['global_regex'] == '_none') {
+    // If new regex type is being applied.
+    drupal_write_record('global_regex_fields', $data);
+  }
+  elseif (!empty($form_state['complete form']['#instance']['global_regex']) && $form_state['values']['instance']['global_regex'] == '_none') {
+    // If applied regex type is being reset.
+    global_regex_delete_record($form_state['values']['instance']['field_name']);
+  }
+  else {
+    // If regex type being applied is updated.
+    drupal_write_record('global_regex_fields', $data, array('field_name'));
+  }
+}
+
+/**
+ * Function for deleting record from global_regex_table.
+ */
+function global_regex_delete_record($field_name) {
+  db_delete('global_regex_fields')
+      ->condition('field_name', $field_name)
+      ->execute();
+}
+
+/**
+ * Function for getting list of all active global regex types.
+ */
+function global_regex_get_list() {
+  $query = db_select('global_regex');
+  $query->condition('status', 1);
+  $query->fields('global_regex', array('machine_name', 'name'));
+  return $query->execute()->fetchAllKeyed();
+}
+
+/**
+ * Implements hook_field_attach_validate().
+ */
+function global_regex_field_attach_validate($entity_type, $entity, &$errors) {
+  $entity_fields = field_info_instances($entity_type, $entity->type);
+  if (!empty($entity_fields)) {
+    $global_regex_type = global_regex_get_regex_types(array_keys($entity_fields));
+    // Get tokens values.
+    $tokens = array(
+      '[entity-type]' => $entity_type,
+      '[bundle]' => $entity->type,
+    );
+    foreach ($global_regex_type as $field_name => $regex_type) {
+      $field = field_info_field($field_name);
+      $instance = field_info_instance($entity_type, $field_name, $entity->type);
+      $languages = field_available_languages($entity_type, $field);
+      foreach ($languages as $langcode) {
+        $items = isset($entity->{$field_name}[$langcode]) ? $entity->{$field_name}[$langcode] : array();
+        foreach ($items as $item) {
+          $tokens += array(
+            '[field-name]' => $instance['label'],
+            '[value]' => $item['value'],
+          );
+          // Get regex type details.
+          $regex_type_details = global_regex_type_load($regex_type);
+          // Chaeck for matching the regex on the value of the field.
+          if ($regex_type_details['status'] == 1 && $item['value'] != '' && (!preg_match($regex_type_details['regex'], $item['value']))) {
+            // Get error message with tokens being replaced.
+            $error_message = strtr($regex_type_details['error_message'], $tokens);
+            form_set_error($field_name, check_plain($error_message));
+          }
+        }
+      }
+    }
+  }
+}
+
+/**
+ * Function for retrieving list of regex being applied on the fields.
+ */
+function global_regex_get_regex_types($fields_array) {
+  $query = db_select('global_regex_fields')
+      ->condition('field_name', $fields_array, 'IN')
+      ->fields('global_regex_fields');
+  return $query->execute()->fetchAllKeyed();
+}
